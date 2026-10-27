@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chatfree
+      POSTGRES_PASSWORD: chatfree
+      POSTGRES_DB: chatfree
+    ports:
+      - "5437:5432"
+    volumes:
+      - chatfree_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatfree -d chatfree"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  chatfree_pgdata:

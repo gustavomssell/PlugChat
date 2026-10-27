@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatFree · Playground do widget</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      .site {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 64px 24px 120px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #fff;
+      }
+      h1 {
+        font-size: clamp(32px, 6vw, 56px);
+        line-height: 1.05;
+        letter-spacing: -0.03em;
+        margin: 24px 0 16px;
+        max-width: 14ch;
+      }
+      p.lead {
+        font-size: 18px;
+        line-height: 1.6;
+        color: #475569;
+        max-width: 48ch;
+        margin: 0;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 40px;
+      }
+      .controls a {
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 13px;
+        color: #334155;
+        text-decoration: none;
+        background: #fff;
+      }
+      .controls a:hover {
+        border-color: #94a3b8;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+        margin-top: 48px;
+      }
+      .card {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 20px;
+        background: #fff;
+      }
+      .card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+      .card span {
+        font-size: 14px;
+        color: #64748b;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="site">
+      <span class="badge">Playground do widget</span>
+      <h1>Teste o chat como se fosse o site do seu cliente.</h1>
+      <p class="lead">
+        Esta página simula uma landing page. O widget é carregado pelo script real, isolado em
+        Shadow DOM, e conversa com a API Go local.
+      </p>
+
+      <div class="controls">
+        <a href="?mode=bubble&position=bottom-right&accent=4f46e5">Bolha · direita</a>
+        <a href="?mode=bubble&position=bottom-left&accent=0f766e">Bolha · esquerda</a>
+        <a href="?mode=popup&position=bottom-right&accent=db2777">Popup</a>
+        <a href="?mode=fullscreen&position=bottom-right&accent=2563eb">Tela cheia</a>
+        <a href="?mode=inline&position=bottom-right&accent=7c3aed">Inline</a>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <strong>Sem conflito de CSS</strong>
+          <span>Todo o widget vive dentro de um Shadow DOM.</span>
+        </div>
+        <div class="card">
+          <strong>Fluxo no servidor</strong>
+          <span>O runtime em Go decide a próxima mensagem do bot.</span>
+        </div>
+        <div class="card">
+          <strong>Humano no controle</strong>
+          <span>O agente pode assumir a conversa pela plataforma.</span>
+        </div>
+      </div>
+
+      <div id="inline-slot" style="margin-top: 48px"></div>
+    </div>
+
+    <script type="module" src="/src/dev.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "chatfree",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/dashboard",
+    "apps/widget",
+    "packages/*"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "dev:dashboard": "npm run dev --workspace @chatfree/dashboard",
+    "dev:widget": "npm run dev --workspace @chatfree/widget",
+    "dev:api": "go run ./apps/api/cmd/api",
+    "build": "npm run build --workspace @chatfree/widget && npm run build --workspace @chatfree/dashboard",
+    "build:api": "go build -o ./apps/api/bin/api ./apps/api/cmd/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:api": "go test ./apps/api/..."
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
