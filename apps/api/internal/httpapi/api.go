@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -172,8 +173,12 @@ func (a *API) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		if header := r.Header.Get("Authorization"); strings.HasPrefix(header, "Bearer ") {
 			token = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		}
-		if token == "" {
-			token = r.URL.Query().Get("token")
+		// O parâmetro de query só existe porque EventSource, <img> e <audio>
+		// não conseguem enviar cabeçalho. Ele fica restrito a leituras: uma URL
+		// com token acaba em logs, no histórico do navegador e no Referer,
+		// então nenhuma escrita pode aceitá-la.
+		if token == "" && r.Method == http.MethodGet {
+			token = strings.TrimSpace(r.URL.Query().Get("token"))
 		}
 
 		if token == "" {
@@ -262,6 +267,14 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
+// writeInternalError answers 500 without leaking internals. The real cause
+// goes to the server log, where an operator can act on it; the client only
+// learns that something failed on our side.
+func writeInternalError(w http.ResponseWriter, err error) {
+	log.Printf("api: erro interno: %v", err)
+	writeError(w, http.StatusInternalServerError, "erro interno do servidor")
+}
+
 // fieldOf extracts the field label from a ErrMissingField wrapper, whose text
 // looks like "flow: missing required field: E-mail".
 func fieldOf(err error) string {
@@ -319,7 +332,12 @@ func (a *API) writeChatError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, "anexo não pertence a esta conversa")
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "registro não encontrado")
+	case errors.Is(err, flow.ErrTooManySteps), errors.Is(err, flow.ErrEmptyGraph),
+		errors.Is(err, flow.ErrInvalidNode), errors.Is(err, flow.ErrNotWaiting):
+		writeError(w, http.StatusBadRequest, "fluxo inválido: "+err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, err.Error())
+		// Qualquer outra falha é interna: o detalhe fica no log do servidor.
+		log.Printf("api: falha inesperada: %v", err)
+		writeError(w, http.StatusInternalServerError, "erro interno do servidor")
 	}
 }

@@ -64,32 +64,26 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (model.Auth
 	user := model.User{ID: id.New("user"), Email: email, Name: name, CreatedAt: now}
 	workspace := model.Workspace{ID: id.New("ws"), Name: workspaceName, CreatedAt: now}
 
-	if err := s.store.CreateUser(ctx, user, hash); err != nil {
-		return model.AuthResponse{}, err
-	}
-	if err := s.store.CreateWorkspace(ctx, workspace); err != nil {
-		return model.AuthResponse{}, err
-	}
-	if err := s.store.CreateMembership(ctx, workspace.ID, user.ID, "owner", "online"); err != nil {
-		return model.AuthResponse{}, err
-	}
-
 	graph := flow.Starter(id.New("flow"), "Atendimento inicial")
-	if err := s.store.CreateFlow(ctx, workspace.ID, graph); err != nil {
-		return model.AuthResponse{}, err
-	}
-
-	channel := model.Channel{
-		ID:             id.New("ch"),
-		WorkspaceID:    workspace.ID,
-		Key:            id.New("pk"),
-		Name:           "Site principal",
-		FlowID:         graph.ID,
-		Appearance:     model.DefaultAppearance,
-		AllowedOrigins: []string{},
-		CreatedAt:      now,
-	}
-	if err := s.store.CreateChannel(ctx, channel); err != nil {
+	// Uma transação só: se algo falhar no meio, o e-mail continua livre para
+	// uma nova tentativa em vez de sobrar um usuário sem workspace.
+	if err := s.store.CreateOwner(ctx, store.OwnerInput{
+		User:         user,
+		PasswordHash: hash,
+		Role:         "owner",
+		Workspace:    workspace,
+		StarterFlow:  graph,
+		Channel: model.Channel{
+			ID:             id.New("ch"),
+			WorkspaceID:    workspace.ID,
+			Key:            id.New("pk"),
+			Name:           "Site principal",
+			FlowID:         graph.ID,
+			Appearance:     model.DefaultAppearance,
+			AllowedOrigins: []string{},
+			CreatedAt:      now,
+		},
+	}); err != nil {
 		return model.AuthResponse{}, err
 	}
 
@@ -182,10 +176,13 @@ func (s *Service) AddAgent(ctx context.Context, workspaceID, name, email, passwo
 	now := time.Now().UTC()
 	user := model.User{ID: id.New("user"), Email: email, Name: name, CreatedAt: now}
 
-	if err := s.store.CreateUser(ctx, user, hash); err != nil {
-		return model.Agent{}, err
-	}
-	if err := s.store.CreateMembership(ctx, workspaceID, user.ID, "agent", "offline"); err != nil {
+	if err := s.store.AddMember(ctx, store.MemberInput{
+		User:         user,
+		PasswordHash: hash,
+		WorkspaceID:  workspaceID,
+		Role:         "agent",
+		Availability: "offline",
+	}); err != nil {
 		return model.Agent{}, err
 	}
 

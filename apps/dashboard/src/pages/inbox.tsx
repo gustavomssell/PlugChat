@@ -262,6 +262,10 @@ export function InboxPage() {
     }) => api.reply(conversationId, text, attachmentIds),
     onSuccess: () => {
       setDraft("");
+      // Os anexos pendentes só saem do estado quando a API aceitou a
+      // mensagem. Limpar antes fazia o arquivo desaparecer silenciosamente
+      // quando o envio falhava.
+      setPendingAttachments([]);
       refresh();
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
@@ -404,7 +408,6 @@ export function InboxPage() {
       text,
       attachmentIds: pendingAttachments.map((item) => item.id),
     });
-    setPendingAttachments([]);
   };
 
   const submitNote = (event: React.FormEvent) => {

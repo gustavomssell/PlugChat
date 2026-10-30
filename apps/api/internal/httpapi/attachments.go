@@ -148,7 +148,7 @@ func (a *API) downloadAttachment(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "anexo não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -170,7 +170,7 @@ func (a *API) widgetAttachment(w http.ResponseWriter, r *http.Request) {
 
 	attachments, err := a.store.AttachmentsByConversation(r.Context(), conversationID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -194,11 +194,12 @@ func (a *API) serveAttachment(w http.ResponseWriter, r *http.Request, attachment
 	extension := strings.TrimPrefix(attachment.StoredName, attachment.ID)
 	file, err := a.files.Open(attachment.ID, extension)
 	if err != nil {
-		if errors.Is(err, files.ErrInvalidName) {
+		// 404 para o que sumiu do disco ou nunca existiu; o resto é interno.
+		if errors.Is(err, files.ErrNotFound) || errors.Is(err, files.ErrInvalidName) {
 			writeError(w, http.StatusNotFound, "anexo não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	defer file.Close()
@@ -207,8 +208,24 @@ func (a *API) serveAttachment(w http.ResponseWriter, r *http.Request, attachment
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	if attachment.Kind == model.KindFile {
-		w.Header().Set("Content-Disposition", `attachment; filename="`+filepath.Base(attachment.Filename)+`"`)
+		w.Header().Set("Content-Disposition", "attachment; "+contentDispositionFilename(attachment.Filename))
 	}
 
 	http.ServeContent(w, r, attachment.Filename, attachment.CreatedAt, file)
+}
+
+// contentDispositionFilename monta o parâmetro filename de forma segura. O
+// nome vem do visitante, então aspas e quebras de linha precisam ser
+// neutralizadas antes de virarem parte de um cabeçalho HTTP.
+func contentDispositionFilename(filename string) string {
+	safe := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == '"' || r == '\\' {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(filepath.Base(filename)))
+	if safe == "" {
+		safe = "anexo"
+	}
+	return `filename="` + safe + `"`
 }

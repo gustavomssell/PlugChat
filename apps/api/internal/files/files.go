@@ -13,7 +13,10 @@ import (
 	"strings"
 )
 
-var ErrInvalidName = errors.New("files: invalid file name")
+var (
+	ErrInvalidName = errors.New("files: invalid file name")
+	ErrNotFound    = errors.New("files: attachment not found on disk")
+)
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
@@ -66,11 +69,13 @@ func (s *Store) Path(id, extension string) string {
 // Save writes the content under the attachment id and returns the stored name
 // (id plus extension) so callers can find it again.
 func (s *Store) Save(id, extension string, content io.Reader) (string, error) {
-	name := id + extension
-	if strings.ContainsAny(id, `/\`) || len(id) > 64 {
+	// O id vem do banco, mas ele também vira caminho no disco: valide antes
+	// de construir qualquer endereço, não depois.
+	if strings.ContainsAny(id, `/\`) || id == "" || len(id) > 64 {
 		return "", ErrInvalidName
 	}
 
+	name := id + extension
 	file, err := os.OpenFile(s.Path(id, extension), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return "", fmt.Errorf("files: create %s: %w", name, err)
@@ -84,12 +89,14 @@ func (s *Store) Save(id, extension string, content io.Reader) (string, error) {
 	return name, nil
 }
 
-// Open returns a seekable reader for a stored attachment.
+// Open returns a seekable reader for a stored attachment. A missing file is
+// ErrNotFound, so the HTTP layer can answer 404; ErrInvalidName is reserved
+// for an id that could never have existed.
 func (s *Store) Open(id, extension string) (io.ReadSeekCloser, error) {
 	file, err := os.Open(s.Path(id, extension))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, ErrInvalidName
+			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("files: open %s: %w", id, err)
 	}

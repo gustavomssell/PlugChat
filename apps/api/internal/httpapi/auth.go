@@ -35,7 +35,7 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, accounts.ErrInvalidInput):
 			writeError(w, http.StatusBadRequest, "nome, e-mail e senha (mínimo 8 caracteres) são obrigatórios")
 		default:
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, err)
 		}
 		return
 	}
@@ -60,7 +60,7 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "e-mail ou senha inválidos")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (a *API) setAvailability(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "disponibilidade inválida")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (a *API) listAgents(w http.ResponseWriter, r *http.Request) {
 
 	agents, err := a.accounts.Agents(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -145,7 +145,7 @@ func (a *API) createAgent(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, accounts.ErrInvalidInput):
 			writeError(w, http.StatusBadRequest, "nome, e-mail e senha (mínimo 8 caracteres) são obrigatórios")
 		default:
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, err)
 		}
 		return
 	}
@@ -160,7 +160,7 @@ func (a *API) stats(w http.ResponseWriter, r *http.Request) {
 
 	stats, err := a.chat.Stats(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 

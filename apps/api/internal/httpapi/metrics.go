@@ -27,7 +27,7 @@ func (a *API) metrics(w http.ResponseWriter, r *http.Request) {
 
 	metrics, err := a.chat.Metrics(r.Context(), claims.WorkspaceID, days)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -48,18 +48,18 @@ func (a *API) exportConversations(w http.ResponseWriter, r *http.Request) {
 
 	conversations, err := a.chat.Conversations(r.Context(), claims.WorkspaceID, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
 	channels, err := a.store.Channels(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 	agents, err := a.store.Members(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 

@@ -19,7 +19,7 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 
 	conversations, err := a.chat.Conversations(r.Context(), claims.WorkspaceID, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 

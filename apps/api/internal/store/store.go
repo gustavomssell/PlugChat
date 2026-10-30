@@ -10,6 +10,26 @@ import (
 
 var ErrNotFound = errors.New("store: not found")
 
+// OwnerInput é o bootstrap completo de um novo workspace.
+type OwnerInput struct {
+	User         model.User
+	PasswordHash string
+	// Role do usuário criado; "owner" na prática.
+	Role        string
+	Workspace   model.Workspace
+	StarterFlow flow.Graph
+	Channel     model.Channel
+}
+
+// MemberInput adiciona um atendente a um workspace existente.
+type MemberInput struct {
+	User         model.User
+	PasswordHash string
+	WorkspaceID  string
+	Role         string
+	Availability string
+}
+
 type ConversationFilter struct {
 	Status    string
 	ChannelID string
@@ -29,6 +49,14 @@ type Store interface {
 	CreateMembership(ctx context.Context, workspaceID, userID, role, availability string) error
 	Members(ctx context.Context, workspaceID string) ([]model.Agent, error)
 	UpdateAvailability(ctx context.Context, workspaceID, userID, availability string) error
+
+	// CreateOwner cria usuário, workspace, membership, fluxo inicial e canal
+	// em uma única transação. Sem ela, uma falha no meio do bootstrap deixa um
+	// usuário órfão com o e-mail já ocupado: ele não consegue mais se
+	// registrar e também não consegue entrar, porque não tem workspace.
+	CreateOwner(ctx context.Context, input OwnerInput) error
+	// AddMember cria usuário e membership de uma vez, pelo mesmo motivo.
+	AddMember(ctx context.Context, input MemberInput) error
 
 	ChannelByKey(ctx context.Context, key string) (model.Channel, error)
 	Channels(ctx context.Context, workspaceID string) ([]model.Channel, error)

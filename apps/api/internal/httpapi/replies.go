@@ -12,7 +12,7 @@ func (a *API) listReplies(w http.ResponseWriter, r *http.Request) {
 
 	replies, err := a.chat.SavedReplies(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Loader2, Pencil, Plus, Tag, Trash2 } from "lucide-react";
 import type { SavedReply } from "@chatfree/shared";
+import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,10 @@ function parseTags(value: string) {
 export function RepliesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { session } = useAuth();
+  // O backend exige owner/admin na escrita. Sem esse guarda a UI mostrava um
+  // formulário que só sabia responder 403 para atendentes.
+  const canManage = session?.membership.role === "owner" || session?.membership.role === "admin";
 
   const replies = useQuery({ queryKey: ["replies"], queryFn: api.listReplies });
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -116,6 +121,11 @@ export function RepliesPage() {
                 ? "Altere o texto e salve para atualizar em toda a equipe."
                 : "Fica disponível no compositor da inbox, com atalho e tags opcionais."}
             </CardDescription>
+            {!canManage ? (
+              <p className="mt-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+                Somente proprietários e administradores podem criar ou editar respostas prontas.
+              </p>
+            ) : null}
           </CardHeader>
           <CardContent className="pt-4">
             <form
@@ -135,6 +145,7 @@ export function RepliesPage() {
                   onChange={(event) => setDraft({ ...draft, title: event.target.value })}
                   placeholder="Horário de atendimento"
                   maxLength={80}
+                  disabled={!canManage}
                   required
                 />
               </div>
@@ -150,6 +161,7 @@ export function RepliesPage() {
                   placeholder="Atendemos de segunda a sexta, das 9h às 18h."
                   rows={4}
                   className="resize-none text-sm"
+                  disabled={!canManage}
                   required
                 />
               </div>
@@ -168,6 +180,7 @@ export function RepliesPage() {
                       placeholder="horario"
                       pattern="[a-z0-9][a-z0-9-]*"
                       maxLength={32}
+                      disabled={!canManage}
                     />
                   </div>
                 </div>
@@ -181,6 +194,7 @@ export function RepliesPage() {
                     value={draft.tags}
                     onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
                     placeholder="horario, comercial"
+                    disabled={!canManage}
                   />
                 </div>
               </div>
@@ -191,7 +205,7 @@ export function RepliesPage() {
               </p>
 
               <div className="flex items-center gap-2">
-                <Button type="submit" disabled={save.isPending}>
+                <Button type="submit" disabled={!canManage || save.isPending}>
                   {save.isPending ? <Loader2 className="animate-spin" /> : <Plus data-icon="inline-start" />}
                   {draft.id ? "Salvar alterações" : "Criar resposta"}
                 </Button>
@@ -252,30 +266,34 @@ export function RepliesPage() {
                       ) : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => edit(reply)}
-                        aria-label={`Editar ${reply.title}`}
-                      >
-                        <Pencil />
-                      </Button>
-                      <ConfirmDialog
-                        trigger={
+                      {canManage ? (
+                        <>
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            className="hover:text-destructive"
-                            aria-label={`Remover ${reply.title}`}
+                            onClick={() => edit(reply)}
+                            aria-label={`Editar ${reply.title}`}
                           >
-                            <Trash2 />
+                            <Pencil />
                           </Button>
-                        }
-                        title="Remover resposta pronta?"
-                        description={`"${reply.title}" deixa de aparecer no compositor da inbox.`}
-                        confirmLabel="Remover"
-                        onConfirm={() => remove.mutate(reply.id)}
-                      />
+                          <ConfirmDialog
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="hover:text-destructive"
+                                aria-label={`Remover ${reply.title}`}
+                              >
+                                <Trash2 />
+                              </Button>
+                            }
+                            title="Remover resposta pronta?"
+                            description={`"${reply.title}" deixa de aparecer no compositor da inbox.`}
+                            confirmLabel="Remover"
+                            onConfirm={() => remove.mutate(reply.id)}
+                          />
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">

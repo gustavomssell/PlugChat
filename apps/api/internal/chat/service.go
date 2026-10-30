@@ -447,6 +447,16 @@ func (s *Service) publish(conversation model.Conversation, messages []model.Mess
 	s.hub.Publish(InboxTopic(conversation.WorkspaceID), "conversation", conversation)
 }
 
+// truncateRunes limita um texto a N caracteres sem jamais cortar no meio de
+// um rune multi-byte.
+func truncateRunes(value string, limit int) string {
+	if utf8.RuneCountInString(value) <= limit {
+		return value
+	}
+	runes := []rune(value)
+	return string(runes[:limit])
+}
+
 func sanitizeTags(tags []string) []string {
 	seen := make(map[string]struct{}, len(tags))
 	out := make([]string, 0, len(tags))
@@ -456,9 +466,9 @@ func sanitizeTags(tags []string) []string {
 		if tag == "" {
 			continue
 		}
-		if len(tag) > 32 {
-			tag = tag[:32]
-		}
+		// Corte por rune, não por byte: tag[:32] cortaria no meio de um
+		// acento e gravaria UTF-8 inválido no banco.
+		tag = truncateRunes(tag, 32)
 		if _, exists := seen[tag]; exists {
 			continue
 		}

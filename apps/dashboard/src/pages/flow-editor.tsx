@@ -289,19 +289,31 @@ export function FlowEditorPage() {
     );
   };
 
-  const updateConfig = (key: string, value: unknown) => {
-    if (!selectedNode) return;
-    const config = { ...(selectedNode.data.config ?? {}), [key]: value };
-    const preview =
-      typeof config.text === "string"
-        ? config.text
-        : typeof config.prompt === "string"
-          ? config.prompt
-            : typeof config.reason === "string"
-              ? config.reason
-              : nodePreview(selectedNode.data.type, config, agents.data);
+  // updateConfig aplica os patches de forma funcional. A versão anterior
+  // reconstruía `config` a partir de selectedNode.data.config, que é uma
+  // captura do render atual: chamadas em sequência no mesmo evento (trocar o
+  // inputType e redefinir options/fields) faziam cada uma descartar a
+  // mudança da anterior, gravando um config corrompido.
+  const updateConfig = (patch: Record<string, unknown>) => {
+    if (!selectedNodeId) return;
+    setDirty(true);
+    setNodes((current) =>
+      current.map((node) => {
+        if (node.id !== selectedNodeId) return node;
 
-    updateSelected({ config, preview });
+        const config = { ...(node.data.config ?? {}), ...patch };
+        const preview =
+          typeof config.text === "string"
+            ? config.text
+            : typeof config.prompt === "string"
+              ? config.prompt
+              : typeof config.reason === "string"
+                ? config.reason
+                : nodePreview(node.data.type, config, agents.data);
+
+        return { ...node, data: { ...node.data, config, preview } };
+      }),
+    );
   };
 
   const deleteSelected = () => {
@@ -773,7 +785,7 @@ function NodeConfigFields({
   agents?: Agent[];
   nodes: Node<FlowNodeData>[];
   currentId?: string;
-  onChange: (key: string, value: unknown) => void;
+  onChange: (patch: Record<string, unknown>) => void;
 }) {
   switch (type) {
     case "message":
@@ -784,7 +796,7 @@ function NodeConfigFields({
             id="node-text"
             rows={4}
             value={stringValue(config, "text")}
-            onChange={(event) => onChange("text", event.target.value)}
+            onChange={(event) => onChange({ text: event.target.value })}
           />
         </Field>
       );
@@ -796,14 +808,14 @@ function NodeConfigFields({
             <Input
               id="node-variable"
               value={stringValue(config, "variable")}
-              onChange={(event) => onChange("variable", event.target.value)}
+              onChange={(event) => onChange({ variable: event.target.value })}
             />
           </Field>
           <Field>
             <FieldLabel htmlFor="node-operator">Operador</FieldLabel>
             <Select
               value={stringValue(config, "operator", "eq")}
-              onValueChange={(value) => onChange("operator", value)}
+              onValueChange={(value) => onChange({ operator: value })}
             >
               <SelectTrigger id="node-operator" className="w-full">
                 <SelectValue />
@@ -823,7 +835,7 @@ function NodeConfigFields({
             <Input
               id="node-value"
               value={stringValue(config, "value")}
-              onChange={(event) => onChange("value", event.target.value)}
+              onChange={(event) => onChange({ value: event.target.value })}
             />
           </Field>
         </>
@@ -837,7 +849,7 @@ function NodeConfigFields({
               id="node-prompt"
               rows={3}
               value={stringValue(config, "prompt")}
-              onChange={(event) => onChange("prompt", event.target.value)}
+              onChange={(event) => onChange({ prompt: event.target.value })}
             />
           </Field>
           <Field>
@@ -845,17 +857,25 @@ function NodeConfigFields({
             <Select
               value={stringValue(config, "inputType", "text")}
               onValueChange={(value) => {
-                onChange("inputType", value);
-                // Um nó é um ou outro: mantém o config coerente com a escolha.
+                // Um nó é um ou outro: um único patch mantém o config coerente.
+                // Múltiplas chamadas de onChange aqui sobrescreveriam umas às
+                // outras, porque cada uma derrubaria a anterior.
                 if (value === "form") {
-                  onChange("options", []);
-                  onChange("fields", [{ name: "", label: "", type: "text", required: false }]);
-                } else {
-                  onChange("fields", undefined);
-                  if (value === "choice" && !Array.isArray(config.options)) {
-                    onChange("options", [{ label: "", value: "", nextNodeId: "" }]);
-                  }
+                  onChange({
+                    inputType: "form",
+                    options: undefined,
+                    fields: [{ name: "", label: "", type: "text", required: false }],
+                  });
+                  return;
                 }
+                onChange({
+                  inputType: value,
+                  fields: undefined,
+                  options:
+                    value === "choice" && !Array.isArray(config.options)
+                      ? [{ label: "", value: "", nextNodeId: "" }]
+                      : config.options,
+                });
               }}
             >
               <SelectTrigger id="node-input-type" className="w-full">
@@ -872,7 +892,7 @@ function NodeConfigFields({
           {stringValue(config, "inputType", "text") === "form" ? (
             <FieldsEditor
               fields={config.fields as WaitField[] | undefined}
-              onChange={(fields) => onChange("fields", fields)}
+              onChange={(fields) => onChange({ fields })}
             />
           ) : (
             <>
@@ -880,7 +900,7 @@ function NodeConfigFields({
                 options={config.options as (string | WaitOption)[] | undefined}
                 nodes={nodes}
                 currentId={currentId}
-                onChange={(options) => onChange("options", options)}
+                onChange={(options) => onChange({ options })}
               />
               <Field>
                 <FieldLabel htmlFor="node-fallback">
@@ -889,7 +909,7 @@ function NodeConfigFields({
                 <Select
                   value={stringValue(config, "fallbackNodeId")}
                   onValueChange={(value) =>
-                    onChange("fallbackNodeId", value === "none" ? "" : value)
+                    onChange({ fallbackNodeId: value === "none" ? "" : value })
                   }
                 >
                   <SelectTrigger id="node-fallback" className="w-full">
@@ -911,17 +931,20 @@ function NodeConfigFields({
                   responde fora das opções.
                 </FieldDescription>
               </Field>
-              {stringValue(config, "variable") ? null : (
+              {/* Antes a condição era invertida: o campo só aparecia quando
+                  `variable` estava vazio, então sumia ao primeiro caractere
+                  digitado. Agora ele é exibido sempre que o tipo aceita texto. */}
+              {stringValue(config, "inputType", "text") !== "choice" ? (
                 <Field>
                   <FieldLabel htmlFor="node-variable">Guardar resposta em</FieldLabel>
                   <Input
                     id="node-variable"
                     placeholder="ex.: topic"
                     value={stringValue(config, "variable")}
-                    onChange={(event) => onChange("variable", event.target.value)}
+                    onChange={(event) => onChange({ variable: event.target.value })}
                   />
                 </Field>
-              )}
+              ) : null}
             </>
           )}
         </>
@@ -935,7 +958,7 @@ function NodeConfigFields({
               id="node-prompt"
               rows={4}
               value={stringValue(config, "prompt")}
-              onChange={(event) => onChange("prompt", event.target.value)}
+              onChange={(event) => onChange({ prompt: event.target.value })}
             />
           </Field>
           <Field>
@@ -943,7 +966,7 @@ function NodeConfigFields({
             <Input
               id="node-variable"
               value={stringValue(config, "variable")}
-              onChange={(event) => onChange("variable", event.target.value)}
+              onChange={(event) => onChange({ variable: event.target.value })}
             />
           </Field>
           <Field>
@@ -952,7 +975,7 @@ function NodeConfigFields({
               id="node-fallback"
               rows={3}
               value={stringValue(config, "fallback")}
-              onChange={(event) => onChange("fallback", event.target.value)}
+              onChange={(event) => onChange({ fallback: event.target.value })}
             />
             <FieldDescription>
               Usada quando a IA não estiver configurada ou falhar.
@@ -968,7 +991,7 @@ function NodeConfigFields({
             id="node-reason"
             rows={3}
             value={stringValue(config, "reason")}
-            onChange={(event) => onChange("reason", event.target.value)}
+            onChange={(event) => onChange({ reason: event.target.value })}
           />
         </Field>
       );
@@ -979,7 +1002,7 @@ function NodeConfigFields({
           <Input
             id="node-url"
             value={stringValue(config, "url")}
-            onChange={(event) => onChange("url", event.target.value)}
+            onChange={(event) => onChange({ url: event.target.value })}
           />
         </Field>
       );
@@ -991,13 +1014,12 @@ function NodeConfigFields({
             id="node-tags"
             value={Array.isArray(config.tags) ? (config.tags as string[]).join(", ") : ""}
             onChange={(event) =>
-              onChange(
-                "tags",
-                event.target.value
+              onChange({
+                tags: event.target.value
                   .split(",")
                   .map((item) => item.trim())
                   .filter(Boolean),
-              )
+              })
             }
           />
         </Field>
@@ -1009,7 +1031,7 @@ function NodeConfigFields({
             <FieldLabel htmlFor="node-agent">Atendente</FieldLabel>
             <Select
               value={stringValue(config, "agentId", "_none") || "_none"}
-              onValueChange={(value) => onChange("agentId", value === "_none" ? "" : value)}
+              onValueChange={(value) => onChange({ agentId: value === "_none" ? "" : value })}
             >
               <SelectTrigger id="node-agent" className="w-full">
                 <SelectValue placeholder="Selecione um atendente" />
@@ -1038,7 +1060,7 @@ function NodeConfigFields({
             type="number"
             min={0}
             value={typeof config.ms === "number" ? config.ms : 1000}
-            onChange={(event) => onChange("ms", Number(event.target.value))}
+            onChange={(event) => onChange({ ms: Number(event.target.value) })}
           />
           <FieldDescription>
             O fluxo continua automaticamente depois desse intervalo, mesmo sem mensagem do visitante.

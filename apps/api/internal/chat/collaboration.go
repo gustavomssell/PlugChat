@@ -301,9 +301,7 @@ func (s *Service) Metrics(ctx context.Context, workspaceID string, days int) (mo
 // client-provided file name.
 func sanitizeFilename(filename string) string {
 	filename = strings.TrimSpace(filename)
-	if len(filename) > 200 {
-		filename = filename[:200]
-	}
+	filename = truncateRunes(filename, 200)
 	filename = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f || r == '/' || r == '\\' || r == ':' {
 			return -1

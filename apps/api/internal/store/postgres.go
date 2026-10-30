@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -73,6 +74,96 @@ func (p *Postgres) CountUsers(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("store: count users: %w", err)
 	}
 	return count, nil
+}
+
+// CreateOwner grava o bootstrap de um workspace em uma transação só. Se
+// qualquer inserção falhar, nada é mantido e o e-mail continua livre.
+func (p *Postgres) CreateOwner(ctx context.Context, input OwnerInput) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: begin owner: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	appearance, err := json.Marshal(input.Channel.Appearance)
+	if err != nil {
+		return fmt.Errorf("store: encode appearance: %w", err)
+	}
+	graph, err := json.Marshal(input.StarterFlow)
+	if err != nil {
+		return fmt.Errorf("store: encode flow: %w", err)
+	}
+
+	statements := []struct {
+		sql   string
+		args  []any
+		label string
+	}{
+		{
+			sql:   `insert into users (id, email, name, password_hash, created_at) values ($1, $2, $3, $4, $5)`,
+			args:  []any{input.User.ID, input.User.Email, input.User.Name, input.PasswordHash, input.User.CreatedAt},
+			label: "user",
+		},
+		{
+			sql:   `insert into workspaces (id, name, created_at) values ($1, $2, $3)`,
+			args:  []any{input.Workspace.ID, input.Workspace.Name, input.Workspace.CreatedAt},
+			label: "workspace",
+		},
+		{
+			sql:   `insert into memberships (workspace_id, user_id, role, availability) values ($1, $2, $3, $4)`,
+			args:  []any{input.Workspace.ID, input.User.ID, input.Role, "online"},
+			label: "membership",
+		},
+		{
+			sql:   `insert into flows (id, workspace_id, name, version, graph, updated_at) values ($1, $2, $3, $4, $5, $6)`,
+			args:  []any{input.StarterFlow.ID, input.Workspace.ID, input.StarterFlow.Name, input.StarterFlow.Version, graph, input.StarterFlow.UpdatedAt},
+			label: "flow",
+		},
+		{
+			sql: `insert into channels (id, workspace_id, public_key, name, flow_id, appearance, allowed_origins, created_at)
+				values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			args:  []any{input.Channel.ID, input.Workspace.ID, input.Channel.Key, input.Channel.Name, input.Channel.FlowID, appearance, input.Channel.AllowedOrigins, input.Channel.CreatedAt},
+			label: "channel",
+		},
+	}
+
+	for _, statement := range statements {
+		if _, err := tx.Exec(ctx, statement.sql, statement.args...); err != nil {
+			return fmt.Errorf("store: create owner %s: %w", statement.label, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: commit owner: %w", err)
+	}
+	return nil
+}
+
+// AddMember grava usuário e membership na mesma transação, para que um
+// atendente nunca exista sem estar ligado a um workspace.
+func (p *Postgres) AddMember(ctx context.Context, input MemberInput) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: begin member: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, `
+		insert into users (id, email, name, password_hash, created_at) values ($1, $2, $3, $4, $5)
+	`, input.User.ID, input.User.Email, input.User.Name, input.PasswordHash, input.User.CreatedAt); err != nil {
+		return fmt.Errorf("store: create member user: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		insert into memberships (workspace_id, user_id, role, availability) values ($1, $2, $3, $4)
+	`, input.WorkspaceID, input.User.ID, input.Role, input.Availability); err != nil {
+		return fmt.Errorf("store: create member membership: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: commit member: %w", err)
+	}
+	return nil
 }
 
 func (p *Postgres) CreateWorkspace(ctx context.Context, workspace model.Workspace) error {
@@ -450,6 +541,15 @@ func (p *Postgres) scanConversation(row pgx.Row) (model.Conversation, error) {
 	return conversation, nil
 }
 
+// escapeLike neutraliza os curingas de um termo de busca. Sem isso um "%"
+// digitado pelo usuário casaria com tudo e um "_" com qualquer caractere.
+func escapeLike(term string) string {
+	if term == "" {
+		return ""
+	}
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(term)
+}
+
 func (p *Postgres) Conversations(ctx context.Context, workspaceID string, filter ConversationFilter) ([]model.Conversation, error) {
 	limit := filter.Limit
 	if limit <= 0 {
@@ -464,13 +564,13 @@ func (p *Postgres) Conversations(ctx context.Context, workspaceID string, filter
 		  and ($3 = '' or channel_id = $3)
 		  and (
 		    $4 = ''
-		    or visitor_id ilike '%' || $4 || '%'
-		    or id ilike '%' || $4 || '%'
-		    or array_to_string(tags, ' ') ilike '%' || $4 || '%'
+		    or visitor_id ilike '%' || $4 || '%' escape '\'
+		    or id ilike '%' || $4 || '%' escape '\'
+		    or array_to_string(tags, ' ') ilike '%' || $4 || '%' escape '\'
 		  )
 		order by updated_at desc
 		limit $5
-	`, workspaceID, filter.Status, filter.ChannelID, filter.Search, limit)
+	`, workspaceID, filter.Status, filter.ChannelID, escapeLike(filter.Search), limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: conversations: %w", err)
 	}
@@ -595,12 +695,14 @@ func (p *Postgres) AppendMessages(ctx context.Context, messages ...model.Message
 
 	batch := &pgx.Batch{}
 	for _, message := range messages {
-		attachments, err := json.Marshal(message.Attachments)
-		if err != nil {
-			return fmt.Errorf("store: encode attachments: %w", err)
-		}
-		if message.Attachments == nil {
-			attachments = []byte("[]")
+		// nil serializaria como "null"; gravamos "[]" no lugar.
+		attachments := []byte("[]")
+		if message.Attachments != nil {
+			encoded, err := json.Marshal(message.Attachments)
+			if err != nil {
+				return fmt.Errorf("store: encode attachments: %w", err)
+			}
+			attachments = encoded
 		}
 
 		batch.Queue(`

@@ -16,10 +16,15 @@ import (
 const maxChannelOrigins = 20
 
 type channelBody struct {
-	Name           string           `json:"name"`
-	FlowID         string           `json:"flowId"`
-	Appearance     model.Appearance `json:"appearance"`
-	AllowedOrigins []string         `json:"allowedOrigins"`
+	Name   string `json:"name"`
+	FlowID string `json:"flowId"`
+	// Appearance e AllowedOrigins são ponteiros: um campo ausente do corpo
+	// precisa significar "mantenha o valor atual". Sem isso um PUT parcial --
+	// ou um cliente que só renomeia o canal -- sobrescreveria a aparência com
+	// os padrões e, pior, limparia a allowlist de origens, liberando
+	// qualquer site a incorporar o widget.
+	Appearance     *model.Appearance `json:"appearance"`
+	AllowedOrigins *[]string         `json:"allowedOrigins"`
 }
 
 func (a *API) listChannels(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +32,7 @@ func (a *API) listChannels(w http.ResponseWriter, r *http.Request) {
 
 	channels, err := a.store.Channels(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -43,7 +48,7 @@ func (a *API) getChannel(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -72,7 +77,7 @@ func (a *API) createChannel(w http.ResponseWriter, r *http.Request) {
 	if flowID == "" {
 		graphs, err := a.store.Flows(r.Context(), claims.WorkspaceID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalError(w, err)
 			return
 		}
 		if len(graphs) == 0 {
@@ -85,13 +90,13 @@ func (a *API) createChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appearance, message := normalizeAppearance(body.Appearance)
+	appearance, message := normalizeAppearance(appearanceOf(body))
 	if message != "" {
 		writeError(w, http.StatusBadRequest, message)
 		return
 	}
 
-	allowedOrigins, message := sanitizeOrigins(body.AllowedOrigins)
+	allowedOrigins, message := sanitizeOrigins(originsOf(body))
 	if message != "" {
 		writeError(w, http.StatusBadRequest, message)
 		return
@@ -109,7 +114,7 @@ func (a *API) createChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.store.CreateChannel(r.Context(), channel); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -129,7 +134,7 @@ func (a *API) updateChannel(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -151,25 +156,31 @@ func (a *API) updateChannel(w http.ResponseWriter, r *http.Request) {
 		channel.FlowID = flowID
 	}
 
-	appearance, message := normalizeAppearance(body.Appearance)
-	if message != "" {
-		writeError(w, http.StatusBadRequest, message)
-		return
+	// Aparência e origens só mudam quando o corpo as envia de verdade: campo
+	// ausente preserva a configuração já gravada.
+	if body.Appearance != nil {
+		appearance, message := normalizeAppearance(*body.Appearance)
+		if message != "" {
+			writeError(w, http.StatusBadRequest, message)
+			return
+		}
+		channel.Appearance = appearance
 	}
-	allowedOrigins, message := sanitizeOrigins(body.AllowedOrigins)
-	if message != "" {
-		writeError(w, http.StatusBadRequest, message)
-		return
+	if body.AllowedOrigins != nil {
+		allowedOrigins, message := sanitizeOrigins(*body.AllowedOrigins)
+		if message != "" {
+			writeError(w, http.StatusBadRequest, message)
+			return
+		}
+		channel.AllowedOrigins = allowedOrigins
 	}
-	channel.Appearance = appearance
-	channel.AllowedOrigins = allowedOrigins
 
 	if err := a.store.UpdateChannel(r.Context(), channel); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -188,11 +199,29 @@ func (a *API) deleteChannel(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// appearanceOf lê a aparência do corpo caindo no valor zerado, para que
+// normalizeAppearance aplique os padrões. Um corpo vazio não destrói nada.
+func appearanceOf(body channelBody) model.Appearance {
+	if body.Appearance == nil {
+		return model.Appearance{}
+	}
+	return *body.Appearance
+}
+
+// originsOf devolve a lista de origens do corpo, ou nil quando ela não foi
+// enviada (o que createChannel trata como "nenhuma origem").
+func originsOf(body channelBody) []string {
+	if body.AllowedOrigins == nil {
+		return nil
+	}
+	return *body.AllowedOrigins
 }
 
 func normalizeAppearance(in model.Appearance) (model.Appearance, string) {

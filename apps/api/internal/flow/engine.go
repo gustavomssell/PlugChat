@@ -326,7 +326,9 @@ func run(graph Graph, state *State, startID string) ([]Effect, error) {
 		}
 	}
 
-	return effects, errors.New("flow: número máximo de passos excedido")
+	// Sem ErrTooManySteps o chamador trataria um laço infinito como falha
+	// interna (500) em vez de encerrar a conversa com um 400 explicativo.
+	return effects, fmt.Errorf("%w: %d passos em uma única execução", ErrTooManySteps, maxSteps)
 }
 
 func findNode(graph Graph, id string) (Node, bool) {

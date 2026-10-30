@@ -23,7 +23,7 @@ func (a *API) widgetConfig(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (a *API) startConversation(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (a *API) widgetContext(w http.ResponseWriter, r *http.Request) (model.Conve
 			writeError(w, http.StatusNotFound, "canal não encontrado")
 			return model.Conversation{}, model.Channel{}, false
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return model.Conversation{}, model.Channel{}, false
 	}
 

@@ -193,11 +193,8 @@ export interface SendMessageResponse {
 export interface VisitorMessageBody {
   text?: string;
   fields?: Record<string, string>;
-}
-
-export interface DayCount {
-  date: string;
-  count: number;
+  /** Anexos enviados antes da mensagem que os reivindica. */
+  attachmentIds?: string[];
 }
 
 export interface Stats {

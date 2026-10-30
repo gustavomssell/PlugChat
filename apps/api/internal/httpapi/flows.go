@@ -16,7 +16,7 @@ func (a *API) listFlows(w http.ResponseWriter, r *http.Request) {
 
 	graphs, err := a.store.Flows(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -57,7 +57,7 @@ func (a *API) createFlow(w http.ResponseWriter, r *http.Request) {
 
 	graph := flow.Starter(id.New("flow"), name)
 	if err := a.store.CreateFlow(r.Context(), claims.WorkspaceID, graph); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -73,7 +73,7 @@ func (a *API) getFlow(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "fluxo não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -108,7 +108,7 @@ func (a *API) saveFlow(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "fluxo não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -123,7 +123,7 @@ func (a *API) saveFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := a.store.SaveFlow(r.Context(), claims.WorkspaceID, graph); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -139,7 +139,7 @@ func (a *API) deleteFlow(w http.ResponseWriter, r *http.Request) {
 
 	channels, err := a.store.Channels(r.Context(), claims.WorkspaceID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (a *API) deleteFlow(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "fluxo não encontrado")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalError(w, err)
 		return
 	}
 
